@@ -1,0 +1,69 @@
+/******************************************************************************
+C program to print 1 to 100 using 2 threads 
+*******************************************************************************/
+
+#include<stdio.h>
+#include<pthread.h>
+#include<unistd.h>
+#include<stdlib.h>
+
+int MAX=100;
+volatile int count=0;
+pthread_mutex_t mutex;
+pthread_cond_t cond;
+
+void *funEven(void *arg)
+{
+  while(count<MAX)
+  {
+     pthread_mutex_lock(&mutex);
+     while(count%2 !=0)
+     {
+        pthread_cond_wait(&cond,&mutex);
+     }
+     printf("%d ",count++);
+     pthread_mutex_unlock(&mutex);
+     pthread_cond_signal(&cond);
+     
+     }
+     pthread_exit(0);
+     
+}
+
+void *funOdd(void *arg)
+{
+   while(count<MAX)
+   {
+    pthread_mutex_lock(&mutex);
+    while(count%2 ==0)
+    {
+      pthread_cond_wait(&cond,&mutex);
+    }
+    printf("%d  ",count++);
+    pthread_mutex_unlock(&mutex);
+    pthread_cond_signal(&cond);
+    
+    }
+    pthread_exit(0);
+    
+    }
+    
+    
+int main()
+{
+  pthread_t t1,t2;
+  
+  pthread_create(&t1,0,&funEven,NULL);
+  pthread_create(&t2,0,&funOdd,NULL);
+  
+  pthread_mutex_init(&mutex,0);
+  pthread_cond_init(&cond,0);
+  pthread_join(t1,0);
+  pthread_join(t2,0);
+  
+  pthread_mutex_destroy(&mutex);
+  pthread_cond_destroy(&cond);
+  
+  return 0;
+  }
+  
