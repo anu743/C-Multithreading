@@ -27,7 +27,7 @@ void *funEven(void *arg)
      
      }
      pthread_exit(0);
-     
+    
 }
 
 void *funOdd(void *arg)
