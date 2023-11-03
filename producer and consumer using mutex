@@ -1,0 +1,85 @@
+#include<stdio.h>
+#include<pthread.h>
+
+#define BUFFER_SIZE 5
+
+#define MAX_ITEMS 20
+
+pthread_cond_t full;
+pthread_cond_t empty;
+pthread_mutex_t mutex;
+
+int buffer[BUFFER_SIZE];
+int producer_count=0,consumer_count=0;
+
+int is_buffer_full=0;
+int in=0,out=0;
+void *producer_fun(void *arg)
+{
+    int item=1;    
+    printf("inside producer_count\n");
+    while(producer_count<MAX_ITEMS )
+    {
+        pthread_mutex_lock(&mutex);
+        
+        while((in+1)%BUFFER_SIZE == out)
+        {
+            pthread_cond_wait(&empty,&mutex);
+        }
+        
+        buffer[in]=item;
+        in =(in+1)%BUFFER_SIZE;
+        
+        producer_count++;
+        item++;
+        pthread_cond_signal(&full);
+        
+        pthread_mutex_unlock(&mutex);
+    }
+    
+}
+
+
+void *consumer_fun(void *arg)
+{
+    int item;
+    printf("indside consumer_fun\n");
+    while(consumer_count< MAX_ITEMS)
+    {
+        pthread_mutex_lock(&mutex);
+        printf("in and out are %d %d\n",in,out);
+        while(in == out)
+        {
+            pthread_cond_wait(&full,&mutex);
+            printf("called cond_wait &full\n");
+        }
+        
+        item=buffer[out];
+        printf("item is %d\n",item);
+        out= (out+1)%BUFFER_SIZE;
+        consumer_count++;
+        pthread_cond_signal(&empty);
+        
+        pthread_mutex_unlock(&mutex);
+    }
+}
+
+int main()
+{
+    pthread_t producer,consumer;
+    pthread_create(&producer,0,&producer_fun,NULL);
+    pthread_create(&consumer,0,&consumer_fun,NULL);
+    
+    pthread_cond_init(&full,NULL);
+    pthread_cond_init(&empty,NULL);
+    pthread_mutex_init(&mutex,NULL);
+    
+    pthread_join(producer,0);
+    pthread_join(consumer,0);
+    
+    
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&full);
+    pthread_cond_destroy(&empty);
+    return 0;
+}
