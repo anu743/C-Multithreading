@@ -1,0 +1,51 @@
+#include<stdio.h>
+#include<pthread.h>
+#include<semaphore.h>
+#include<stdlib.h>
+
+#define NUM_THREDS 16 
+
+sem_t sem_fuel;
+
+void *routine(void *args)
+{
+    printf("inside the function %d",*(int *)args);
+    sem_wait(&sem_fuel);
+        printf("logged in %d\n",*(int *)args);
+        sleep(rand()%5+1);
+        printf("logged out %d\n",*(int *)args);
+    
+    sem_post(&sem_fuel);
+    free(args);
+}
+int main()
+{
+    pthread_t t[NUM_THREDS];
+    
+    sem_init(&sem_fuel,0,12);
+    for(int i=0;i<NUM_THREDS;i++)
+    {
+        int *a=(int *)malloc(sizeof(int));
+        *a=i;
+        if(pthread_create(&t[i],0,&routine,a)!=0)
+        {
+            perror("thread creation failed");
+        }
+    }
+    
+    for(int i=0;i<NUM_THREDS;i++)
+    {
+        if(pthread_join(t[i],0)!=0)
+        {
+            perror("pthread join is failed");
+        }
+        
+    }
+    
+    sem_destroy(&sem_fuel);
+    
+    return 0;
+}
+// here semaphore is used to synchonize the resources between the threads
+// there are 15 threads but only 12 thres at time can go inside and loggedin
+//remaining will wait until anyone thread gets terminated or dicharged.
