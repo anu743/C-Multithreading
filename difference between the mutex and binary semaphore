@@ -1,0 +1,83 @@
+#include<stdio.h>
+#include<pthread.h>
+#include<semaphore.h>
+#include<stdlib.h>
+
+
+#define NUM_THREADS 1
+pthread_mutex_t mutex;
+sem_t sem_fuel;
+
+int count=10;
+void *routine(void *arg)
+{
+ //   pthread_mutex_lock(&mutex);
+  while(1)
+   {
+       // sem_wait(&sem_fuel);
+        pthread_mutex_lock(&mutex);
+      
+        count += 50;
+        printf("count :%d  \n",count);
+    
+       
+    
+    }
+    //pthread_mutex_unlock(&mutex);
+}
+
+void *routine1(void *args)
+{
+  while(1)
+  {
+    // sem_post(&sem_fuel);
+  
+    pthread_mutex_unlock(&mutex);
+      usleep(5000);
+  } 
+}
+int main()
+{
+    pthread_t t[NUM_THREADS];
+    
+    pthread_mutex_init(&mutex,NULL);
+    sem_init(&sem_fuel,0,1);
+    
+    for(int i=0;i<2;i++)
+    {
+        if(pthread_create(&t[i],0,&routine,NULL)!=0)
+        {
+            perror("thread create failed");
+        }
+    }
+     for(int i=2;i<4;i++)
+    {
+        if(pthread_create(&t[i],0,&routine1,NULL)!=0)
+        {
+            perror("thread create failed");
+        }
+    }
+    // here 4 threads initialized with 2 functions routine 1 and routine2 
+    // if we try to do sem_wait(&sem_fuel) from one funciton and do sem_post(&sem_fuel) from other routine1 thorugh other thread
+    // still it works fine without any error
+
+    // but if we mutex then it faile after sometime immediately, with error: 
+    //.out: pthread_mutex_lock.c:94: ___pthread_mutex_lock: Assertion `mutex->__data.__owner == 0' failed.
+    // here mutex checks the owonership like , whichever thread locks the mutex only that thread needs to unlock it , then other thread can be able to lock it
+    // but incase of semaphore , some other thread can change the value of the semaphore by calline sem_post()
+    // this doesn't verify the owner ship
+    
+//    sem_wait(&sem_fuel);
+
+    for(int i=0;i<NUM_THREADS;i++)
+    {
+        if(pthread_join(t[i],0)!=0)
+        {
+            perror("thread join failed");
+        }
+    }
+    
+    pthread_mutex_destroy(&mutex);
+    sem_destroy(&sem_fuel);
+    return 0;
+}
