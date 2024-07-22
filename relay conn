@@ -1,0 +1,192 @@
+static void relay_connection (struct conn_s *connptr)
+{
+        int ret;
+        ssize_t bytes_received = 0;
+        ssize_t bytes_sent = 0;
+
+        struct buffer_static_s *buff;
+
+        unsigned int sbuffer_r = 0; /*server buffer read index*/
+        unsigned int sbuffer_w = 0; /*server buffer write index*/
+        unsigned int cbuffer_r = 0; /*client buffer read index*/
+        unsigned int cbuffer_w = 0; /*client buffer write index*/
+        /*to avoid extra logic apart from the receive/send indexes we support buffers used counter for simplicity*/
+        unsigned int buffers_c_used = 0;
+        unsigned int buffers_s_used = 0;
+        log_message(LOG_INFO,"reqs.c inside relay_connection allocating buffer %u size of struct buffer_statics",sizeof(struct buffer_static_s));
+
+        buff = (struct buffer_static_s *) safemalloc (sizeof (struct buffer_static_s));
+
+
+        if(!buff)
+        {       log_message (LOG_ERR,"relay_connection: Could not allocate buffer");
+                return;
+        }
+
+        for (;;) {
+
+                pollfd_struct fds[2] = {0};
+                fds[0].fd = connptr->client_fd;
+                fds[1].fd = connptr->server_fd;
+
+                /*Add  sleep to the thread so we don't constantly poll and use CPU cycles needlessly*/
+                usleep(RELAYSLEEP);
+                log_message(LOG_INFO,"inside relay_Connection : %d %d ",buffers_s_used,buffers_c_used);
+                if (buffers_s_used > 0) 
+                        fds[0].events |= MYPOLL_WRITE;
+                if (buffers_c_used > 0)
+                        fds[1].events |= MYPOLL_WRITE;
+                if (buffers_s_used < NMBRBUFFS)
+                        fds[1].events |= MYPOLL_READ;
+                if (buffers_c_used < NMBRBUFFS)
+                        fds[0].events |= MYPOLL_READ;
+
+                ret = mypoll(fds, 2, config->idletimeout);
+                log_message(LOG_INFO,"inside relay_connection value of ret %d",ret);
+                if (ret == 0) {
+                        log_message (LOG_INFO,
+                                     "Idle Timeout (after " SELECT_OR_POLL ")");
+								safefree(buff);
+                        log_message(LOG_INFO,"annapurna insdie relay_connection safefree called---1");
+                                return;
+                } else if (ret < 0) {
+                        log_message (LOG_ERR,
+                                     "relay_connection: " SELECT_OR_POLL "() error \"%s\". "
+                                     "Closing connection (client_fd:%d, server_fd:%d)",
+                                     strerror (errno), connptr->client_fd,
+                                     connptr->server_fd);
+                                     safefree(buff);
+                        log_message(LOG_INFO,"annapurna insdie relay_connection safefree called---2");
+                        return;
+                }
+
+                if (fds[1].revents & MYPOLL_READ) {
+                        log_message(LOG_INFO,"inside server read\n");
+                        bytes_received =
+                            read_buffer_s (connptr->server_fd, sbuffer_r, buff);
+                        if (bytes_received < 0)
+                        {
+                                break;
+                        }
+                        if(bytes_received > 0)
+                        {
+                                log_message(LOG_INFO,"inside server read buffer received %uz\n",bytes_received);
+                            sbuffer_r++;
+                            buffers_s_used++;
+                            if(sbuffer_r == NMBRBUFFS)
+                            {
+                               sbuffer_r = 0;
+                            }
+                        }
+
+                        connptr->content_length.server -= bytes_received;
+                        log_message(LOG_INFO,"inside relay_connection server content length %lld",connptr->content_length.server);
+                        if (connptr->content_length.server == 0)
+                                break;
+                }
+                if ((fds[0].revents & MYPOLL_READ)){
+                        log_message(LOG_INFO,"inside client read\n");
+                       bytes_received = read_buffer_c (connptr->client_fd, cbuffer_r,buff);
+                    if (bytes_received < 0)
+                    {
+                         log_message(LOG_INFO,"inside relay_connection, breaking from the for loop read_buffer_c receiveed bytes are 0");
+                            break;
+                           
+                    }
+                    if(bytes_received>0)
+                    {
+                         log_message(LOG_INFO,"inside client read buffer received %uz\n",bytes_received);
+                       cbuffer_r++;
+                        buffers_c_used++;
+                        if(cbuffer_r == NMBRBUFFS)
+                        {
+                               cbuffer_r = 0;
+                        }
+                    }
+                }
+
+                if ((fds[1].revents & MYPOLL_WRITE)){
+                         log_message(LOG_INFO,"inside server write\n");
+                    bytes_sent = write_buffer_c (connptr->server_fd, cbuffer_w,buff);
+                    
+                    if(bytes_sent<0)
+                    {
+                         log_message(LOG_INFO,"inside relay_connection, breaking from the for loop write_buffer_c sent bytes are 0");
+                        break;
+                    }
+                    if(bytes_sent>0)
+                    {
+                        cbuffer_w++;
+                        log_message(LOG_INFO,"inside server write buffer sent %uz\n",bytes_sent);
+                        buffers_c_used--;
+                        if(cbuffer_w == NMBRBUFFS)
+                        {
+                               cbuffer_w = 0;
+                        }
+
+                    }
+                }
+                if ((fds[0].revents & MYPOLL_WRITE)){
+                          log_message(LOG_INFO,"inside client write\n");
+                    bytes_sent = write_buffer_s (connptr->client_fd, sbuffer_w,buff);
+                    if(bytes_sent<0)
+                    {
+                        log_message(LOG_INFO,"inside relay_connection, breaking from the for loop write_buffer_s sent bytes are 0");
+                        break;
+                    }
+                    if(bytes_sent>0)
+                    {
+                         log_message(LOG_INFO,"inside clinet write buffer sent %uz\n",bytes_sent);
+                        sbuffer_w++;
+                        buffers_s_used--;
+                        if(sbuffer_w == NMBRBUFFS)
+                        {
+                               sbuffer_w = 0;
+                        }
+
+                    }
+                }
+        }
+
+        while (buffers_s_used > 0) {
+                if (write_buffer_s (connptr->client_fd, sbuffer_w,buff) < 0)
+                        break;
+                        sbuffer_w++;
+                        buffers_s_used--;
+                        if(sbuffer_w == NMBRBUFFS)
+                        {
+                               sbuffer_w = 0;
+                        }
+        }
+        log_message(LOG_INFO,"inside relay_Connection : %d %d  before shutdown",buffers_s_used,buffers_c_used);
+        shutdown (connptr->client_fd, SHUT_WR);
+
+        /*
+         * Try to send any remaining data to the server if we can.
+         */
+        ret = socket_blocking (connptr->server_fd);
+        if (ret != 0) {
+                log_message(LOG_ERR,
+                            "Failed to set server socket to blocking: %s",
+                            strerror(errno));
+                safefree(buff);
+                log_message(LOG_INFO,"annapurna insdie relay_connection safefree called---3");
+                return;
+        }
+
+        while (buffers_c_used > 0) {
+                if (write_buffer_c (connptr->server_fd, cbuffer_w, buff) < 0)
+                        break;
+               buffers_c_used--;
+               cbuffer_w++;
+               if(cbuffer_w == NMBRBUFFS)
+                {
+                       cbuffer_w = 0;
+                }
+        }
+        
+        log_message(LOG_INFO,"inside relay_Connection before safefree : %d %d ",buffers_s_used,buffers_c_used);
+        safefree(buff);
+        log_message(LOG_INFO,"annapurna insdie relay_connection safefree called---4");
+        return;
+}
