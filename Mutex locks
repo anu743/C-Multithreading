@@ -46,3 +46,8 @@ int main()
   pthread_mutex_destroy(&lock));
   return 0;
 }
+// mutex initialization can be failed due to improper configuration or insufficient system resources, errors in snychronization logic of the 
+//application
+
+// thread creation can be fabied if the system is lack of resources to create the thread,or the system imposed limit for the total number of 
+// threads for the process is reached : PTHREAD_THREAD_MAX
